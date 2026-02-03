@@ -1,6 +1,14 @@
 import pygame
 from pygame import Vector2
 import random
+import subprocess
+import sys
+
+
+try:
+    import pygame as pygm
+except ModuleNotFoundError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pygame"])
 
 
 display_heigth = int(600)
