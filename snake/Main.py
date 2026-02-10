@@ -3,10 +3,10 @@ from pygame import Vector2
 import random
 import subprocess
 import sys
-
-
+import time
+import random
 try:
-    import pygame as pygm
+    import pygame as pygame
 except ModuleNotFoundError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "pygame"])
 
@@ -14,25 +14,36 @@ except ModuleNotFoundError:
 display_heigth = int(600)
 display_width = int(800)
 tile_size = 50
-running = True
+
 
 pygame.init()
 screen = pygame.display.set_mode((display_width, display_heigth))
 clock = pygame.time.Clock()
 
-snake = []
-tilemap = []
-fruits = []
 
+
+class Game:
+    def __init__(self, snake_refresh_cooldown, last_snake_refresh, snake, tilemap, fruits, running):
+        self.snake_refresh_cooldown = snake_refresh_cooldown
+        self.last_snake_refresh = last_snake_refresh
+        self.snake = snake
+        self.tilemap = tilemap
+        self.fruits = fruits
+        self.running = running
+
+    def stop_game(self):
+        self.running = False
+g = Game(250, 0, [], [], [], True)
 # instantiate_part drawing tile for every object
 
 class Fruit:
-    def __init__(self, position, index, rect):
+    def __init__(self, position, index, rect, color):
         self.position = position
         self.index = index
         self.rect = pygame.Rect(position.x, position.y, tile_size, tile_size)
+        self.color = color
     def instantiate_part(self):
-        pygame.draw.rect(screen, (255, 0, 0), (self.position, (tile_size, tile_size)))
+        pygame.draw.rect(screen, self.color, (self.position, (tile_size, tile_size)))
 
 #class for every tile of tile_size length in scene 
 
@@ -42,7 +53,7 @@ class Tile:
         self.taken = taken
         self.occupant = occupant
 
-#class following the head of the snake
+#class following the head of the g.snake
 
 class Body:
     def __init__(self, position, marker, index):
@@ -55,11 +66,11 @@ class Body:
     #moves to his front body's position
     
     def move(self):
-        if snake[-1] == self:
+        if g.snake[-1] == self:
             tile = get_tile_from_pos(self.position)
-            tilemap[int(tile.y)][int(tile.x)].taken = False
-            tilemap[int(tile.y)][int(tile.x)].occupant = None
-        self.position = snake[self.index-1].marker.copy()
+            g.tilemap[int(tile.y)][int(tile.x)].taken = False
+            g.tilemap[int(tile.y)][int(tile.x)].occupant = None
+        self.position = g.snake[self.index-1].marker.copy()
     
     #sets up marker for back body
 
@@ -68,15 +79,26 @@ class Body:
 
 class Snake:
     
-    def __init__(self, position, thrust, marker, rect):
+    def __init__(self, position, thrust, marker, rect, img, angle):
         self.position = position
         self.thrust = thrust
         self.marker = marker
         self.rect = pygame.Rect(
             position.x, position.y, tile_size, tile_size
         )
+        self.img = img
+        self.angle = angle
     def instantiate_part(self):
-        pygame.draw.rect(screen, (0, 0, 255), (self.position, (tile_size, tile_size)))
+        # -1 0 = 0
+        # 1 0 = 180
+        # 0 -1 = 270
+        # 0 1 = 90
+        head_img = pygame.image.load(self.img).convert()
+        head_img = pygame.transform.scale(head_img, (tile_size, tile_size))
+        self.angle.x = {-1: 90, 1: 270}.get(self.thrust.x, 0)
+        self.angle.y = {-1: 0, 1: 180}.get(self.thrust.y, 0)
+        rotated_head = pygame.transform.rotate(head_img, self.angle.x + self.angle.y)
+        screen.blit(rotated_head, self.position)
 
     #moves the head in the x or y direction tile_size times and senses collision between himself and the body
 
@@ -84,15 +106,18 @@ class Snake:
         self.position.x += self.thrust.x * tile_size
         self.position.y += self.thrust.y * tile_size
         self.rect.topleft = (self.position.x, self.position.y)
-        tile_index = get_tile_from_pos(self.position)
-        tile = tilemap[int(tile_index.y)][int(tile_index.x)]
-        if tile.taken == True and tile.occupant != "fruit":
+        try:
+            tile_index = get_tile_from_pos(self.position)
+            tile = g.tilemap[int(tile_index.y)][int(tile_index.x)]
+            if tile.taken == True and tile.occupant not in ["apple", "lime"]:
+                print("lost the game")
+                g.stop_game()
+            else:
+                tile.taken = True
+                tile.occupant = "snake"
+        except IndexError:
             print("lost the game")
-            global running
-            running = False
-        else:
-            tile.taken = True
-            tile.occupant = "snake"
+            g.stop_game()
     def change_throttle(self, value):
         self.thrust.x = value.x
         self.thrust.y = value.y
@@ -108,8 +133,8 @@ def make_tilemap():
     for j in range(0, display_heigth, 50):
         column = []
         for i in range(0, display_width, 50):
-            column.append(Tile(Vector2(i, j), False))
-        tilemap.append(column)
+            column.append(Tile(Vector2(i, j), False, "None"))
+        g.tilemap.append(column)
 
 #gives index of a tile from a vector2 position
 
@@ -124,73 +149,80 @@ def spawn_fruit():
     rand_x = random.randrange(0, display_width, 50)
     rand_y = random.randrange(0, display_heigth, 50)
     tile_index = get_tile_from_pos(Vector2(rand_x, rand_y))
-    tile = tilemap[int(tile_index.y)][int(tile_index.x)]
+    tile = g.tilemap[int(tile_index.y)][int(tile_index.x)]
     if not tile.taken:
-       tile.taken = True
-       tile.occupant = "fruit"
-
-       prefab = Fruit(Vector2(rand_x, rand_y), len(fruits), None)
-       fruits.append(prefab)
+        tile.taken = True
+        
+        if random.randint(0, 10) == 1:
+            color = (0, 255, 0)
+            tile.occupant = "lime"
+            print(f"spawned line: {tile.occupant}")
+        else:
+            color = (255, 0, 0)
+            tile.occupant = "apple"
+        prefab = Fruit(Vector2(rand_x, rand_y), len(g.fruits), None, color)
+        g.fruits.append(prefab)
     else:
         spawn_fruit()
 
-#makes the beginner 3 part snake
+#makes the beginner 3 part g.snake
 
 def make_snake():
     for i in range(0, 3):
         if i == 0:      
             snake_pos = Vector2(display_width/2, display_heigth/2)
             snake_throttle = Vector2(0, -1)
-            snake.append(Snake(snake_pos, snake_throttle, Vector2(snake_pos.x, snake_pos.y+50), None))
+            g.snake.append(Snake(snake_pos, snake_throttle, Vector2(snake_pos.x, snake_pos.y+50), None, r"Snake/v2/sprites/snake_head.png", Vector2(0, 90)))
         else:
-            snake_pos = Vector2(snake[i-1].marker.x, snake[i-1].marker.y)
+            snake_pos = Vector2(g.snake[i-1].marker.x, g.snake[i-1].marker.y)
             
-            snake.append(Body(snake_pos,Vector2(snake_pos.x, snake_pos.y+50), i))
+            g.snake.append(Body(snake_pos,Vector2(snake_pos.x, snake_pos.y+50), i))
     instntiate_snake()
 
-#instantiates the snake every frame
+#instantiates the g.snake every frame
 
 def instntiate_snake():
-    for i in range(0, len(snake)):
-        snake[i].mark()
-        snake[i].move()
-        snake[i].instantiate_part()
+    for i in range(0, len(g.snake)):
+        g.snake[i].mark()
+        g.snake[i].move()
+        g.snake[i].instantiate_part()
 
-#instantiates the fruits every frame
+#instantiates the g.fruits every frame
 
 def instantiate_fruits():
-    for i in range(0, len(fruits)):
-        fruits[i].index = i
-        fruits[i].instantiate_part()
+    for i in range(0, len(g.fruits)):
+        g.fruits[i].index = i
+        g.fruits[i].instantiate_part()
 
 #instantiates all bodies on the screen
 
-def instantiate_main():
-    screen.fill((0, 0, 0))
-    instntiate_snake()
-    instantiate_fruits()
 
-#adds a snake part
+
+#adds a g.snake part
 
 def add_part():
-    snake_index = len(snake)
-    snake_pos = snake[snake_index-1].marker
-    snake.append(Body(snake_pos, Vector2(snake_pos.x, snake_pos.y), snake_index))
+    snake_index = len(g.snake)
+    snake_pos = g.snake[snake_index-1].marker
+    g.snake.append(Body(snake_pos, Vector2(snake_pos.x, snake_pos.y), snake_index))
 
 #detects collision betweenthe head and the fruit
 
 def collision_fruit():
         
-    for i in range(len(fruits) - 1, -1, -1):
-        if snake[0].rect.colliderect(fruits[i].rect):
-            fruits.pop(i)
+    for i in range(len(g.fruits) - 1, -1, -1):
+        if g.snake[0].rect.colliderect(g.fruits[i].rect):
+            tile_index = get_tile_from_pos(g.fruits[i].position)
+            
+            tile = g.tilemap[int(tile_index.y)][int(tile_index.x)]
+            
+            g.fruits.pop(i)
             add_part()
             spawn_fruit()
 
 #checks if head is out of borders and returns false if touched
 
 def check_borders():
-    head = snake[0]
+    head = g.snake[0]
     if head.position.x > display_width or head.position.x < 0 or head.position.y > display_heigth or head.position.y < 0:
         print("lost the game")
         return False
@@ -206,7 +238,6 @@ def check_borders():
 def start_game():
     
     pressed = False
-    global running
 
 
     make_tilemap()
@@ -215,18 +246,19 @@ def start_game():
 
     
 
-    while running:
+    while g.running:
         for event in pygame.event.get():
 
             #checks if quit game
 
             if event.type == pygame.QUIT:
-                running = False
+                print("quit")
+                g.stop_game()
             
             #input detection
 
             if event.type == pygame.KEYDOWN and pressed == False:
-                value = snake[0].thrust.copy()
+                value = g.snake[0].thrust.copy()
     
                 if event.key in (pygame.K_w, pygame.K_UP) and value.y != 1:
                     value = Vector2(0, -1)
@@ -237,7 +269,7 @@ def start_game():
                 elif event.key in (pygame.K_a, pygame.K_LEFT) and value.x != 1:
                     value = Vector2(-1, 0)
     
-                snake[0].change_throttle(value)
+                g.snake[0].change_throttle(value)
                 pressed = True
            
         
@@ -246,18 +278,26 @@ def start_game():
             
         
         #----
+        now = time.perf_counter() * 1000
 
         collision_fruit()
-        running = check_borders()
-        instantiate_main()
+        g.running = check_borders()
+        
+        if now - g.last_snake_refresh > g.snake_refresh_cooldown:
+            g.last_snake_refresh = now
+            screen.fill((0, 0, 0))
+            instantiate_fruits()
+            instntiate_snake()
+            pressed = False
+
         #----
-        #disables the ability to move in the opposite direction pressing both keys at once
-        pressed = False
+
+        
 
         pygame.display.flip()
 
-        #3 frames per second update
+        #60 frames per second update
 
-        clock.tick(3)
+        clock.tick(60)
     
 start_game()
