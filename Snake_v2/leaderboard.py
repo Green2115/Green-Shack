@@ -12,7 +12,7 @@ def run_leaderboard(screen, clock, score):
     client = socket.socket() 
     def get_leaderboard(name, score):
         port = 2345
-        client.connect(('127.0.0.1', port))
+        client.connect(('91.195.46.215', port))
         client.send(name.encode())
         time.sleep(0.01)
         client.send(str(score).encode())
